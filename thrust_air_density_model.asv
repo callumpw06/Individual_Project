@@ -1,0 +1,407 @@
+%----- Modelling a Propelled Aeroplane with Altitude-Dependent Thrust -----
+close all; clc; clear all;
+
+%----- Defining Parameters -----
+D_values = [1]; 
+dt = 0.001;
+tspan = 0:dt:10; 
+theta_0 = 0;      
+H = 3.0;          
+k = 1.5;          
+T_base = 1.5;     
+colors = ['k' 'r' 'g' 'b'];
+
+%----- Setup Figure for Trajectory (Shared) -----
+f_traj = figure('Name', 'Trajectory Comparison', 'Color', 'w', 'Theme', 'light');
+% Standard size for trajectory
+set(f_traj, 'Position', [100, 100, 800, 600]); 
+ax_traj = gca;
+hold(ax_traj, 'on'); grid(ax_traj, 'on');
+xlabel(ax_traj, 'Horizontal Position ($x$)', 'Interpreter', 'latex');
+ylabel(ax_traj, 'Altitude ($y$)', 'Interpreter', 'latex');
+title(ax_traj, 'Trajectory Comparison', 'Interpreter', 'latex');
+set(ax_traj, 'FontSize', 24);
+ylim(ax_traj, [-1 1.1]);
+
+%----- Loop -----
+for i = 1:length(D_values)
+    D = D_values(i);
+    
+    %----- Defining system of Equations -----
+    u = @(t,v) [(v(2)^2 * exp(-v(3)/H) - cos(v(1))) / v(2);
+            -sin(v(1)) - D*v(2)^2*exp(-v(3)/H) + T_base*exp(-k*v(3)/H);
+            v(2) * sin(v(1)) ];
+        
+    %----- Initial Conditions & Solve -----
+    v0 = [theta_0; 1.5; 0]; 
+    opts = odeset('RelTol',1e-6,'AbsTol',1e-6);
+    [t, vel] = ode45(u, tspan, v0, opts);
+    
+    %======================================================================
+    % 1. CALCULATE DRAG HERE
+    %======================================================================
+    % Drag = D * s^2 * exp(-y/H)
+    drag_force = D .* vel(:,2).^2 .* exp(-vel(:,3)./H);  %%% ADDED THIS %%%
+
+    % We set Width=500 and Height=800 to make it narrow and tall
+    figure('Name', ['Dynamics for D = ' num2str(D)], 'Color', 'w', ...
+           'Position', [100+(i*50), 50, 550, 600], 'Theme', 'light'); 
+       
+    ax_curr = gca; 
+    hold(ax_curr, 'on'); grid(ax_curr, 'on');
+    set(ax_curr, 'FontSize', 20);
+    
+    % Labels
+    title(ax_curr, ['Flight Variables $(D=' num2str(D) ')$'], 'Interpreter','latex','FontSize', 24);
+    subtitle('$\theta_0=0$, $s_0=1.5$, $y_0=0$', 'Interpreter', 'latex', 'FontSize', 18);
+    xlabel(ax_curr, 'Time ($t$)', 'Interpreter', 'latex', 'FontSize', 24);
+    ylabel(ax_curr, 'Magnitude', 'Interpreter','latex', 'FontSize', 24);
+    
+    % Plotting Variables 
+    plot(ax_curr, t, vel(:,1), 'LineStyle', '-', 'LineWidth', 2, ...
+        'DisplayName', '$\theta$');
+    plot(ax_curr, t, vel(:,2), 'LineStyle', '--', 'LineWidth', 2, ...
+        'DisplayName', '$s$');
+    plot(ax_curr, t, vel(:,3), 'LineStyle', ':', 'LineWidth', 2, ...
+        'DisplayName', '$y$');
+    plot(ax_curr, t, T_base.*exp(-k.*vel(:,3)/H), "LineStyle", "-." , "LineWidth", 2, ...
+        "DisplayName", '$T_{thrust}$');
+    plot(ax_curr, t, drag_force, 'LineStyle', '-', 'MarkerIndices', 1:500:length(t), ...
+        'LineWidth', 1.5, 'DisplayName', '$Drag$'); 
+        
+    % Legend
+    legend(ax_curr, 'show', 'Interpreter', 'latex', 'FontSize', 24, 'Location', 'northeast');
+    
+    % Update Trajectory Figure (Shared)
+    set(0, 'CurrentFigure', f_traj); 
+    x = cumtrapz(t, vel(:,2).*cos(vel(:,1)));
+    plot(ax_traj, x, vel(:,3), 'LineWidth', 2, ...
+        'DisplayName', ['$D = ' num2str(D) '$']);
+end
+
+legend(ax_traj, 'show', 'Interpreter', 'latex', 'FontSize', 24, 'Location', 'southeast');
+
+%----- Defining Parameters -----
+D_values = [1]; 
+dt = 0.001;
+tspan = 0:dt:20; 
+theta_0 = 0;      
+H = 3.0;          
+k = 1.5;          
+T_base = 1.5;     
+S_max = 2.5; Y_max = 1.0; Y_min = -1.0;
+
+%----- Loop for Simulations -----
+for i = 1:length(D_values)
+    D = D_values(i);
+    
+    %----- Defining system of Equations -----
+    dynamics = @(t,v) [(v(2)^2 * exp(-v(3)/H) - cos(v(1))) / v(2);    % d_theta
+                       -sin(v(1)) - D*v(2)^2*exp(-v(3)/H) + T_base*exp(-k*v(3)/H); % d_s
+                       v(2) * sin(v(1)) ];                            % d_y
+        
+    %----- Initial Conditions & Solve -----
+    v0 = [theta_0; 1.5; 0]; 
+    opts = odeset('RelTol',1e-10,'AbsTol',1e-10);
+    [t, vel] = ode45(dynamics, tspan, v0, opts);
+    
+    %======================================================================
+    %     PHASE CYLINDER VISUALIZATION
+    %======================================================================
+    figure('Color', 'w', 'Name', sprintf('Phase Space (Cylindrical) D=%d', D), ...
+           'Theme', 'light', 'Position', [100+(i*50), 50, 900, 800]);
+    axis tight;
+    
+    % 1. Create a 3D Grid for the Vector Field
+    theta_vals = linspace(-pi, pi, 16);
+    s_vals     = linspace(0.5, S_max, 4);
+    y_vals     = linspace(Y_min, Y_max, 4); % Increased density slightly for better color gradient
+    [TH, S, Y] = meshgrid(theta_vals, s_vals, y_vals);
+    
+    % 2. Calculate Derivatives
+    d_theta = (S.^2.*exp(-Y./H) - cos(TH)) ./ S;
+    d_s     = -sin(TH) - D.*S.^2.*exp(-Y./H) + T_base.*exp(-k.*Y./H);
+    d_y     = S.*sin(TH);
+    
+    % 3. Coordinate Transformation
+    X_plot = S .* cos(TH);
+    Y_plot = S .* sin(TH);
+    Z_plot = Y;
+    
+    % 4. Vector Transformation
+    U_3d = d_s .* cos(TH) - S .* sin(TH) .* d_theta;
+    V_3d = d_s .* sin(TH) + S .* cos(TH) .* d_theta;
+    W_3d = d_y;
+    
+    % 5. Plotting Setup
+    hold on; grid on; axis equal;
+    view(140, 15);
+    
+    n_colors = 128;              % Number of color levels
+    cmap = jet(n_colors);       % Define colormap (jet, parula, turbo, etc.)
+    colormap(cmap);             % Apply to figure
+    
+    % Define the range for coloring based on Z_plot
+    c_min = min(Z_plot(:));
+    c_max = max(Z_plot(:));
+    
+    % Bin indices for every point in the grid
+    edges = linspace(c_min, c_max, n_colors+1);
+    [~, ~, bins] = histcounts(Z_plot, edges);
+    
+    % Loop through each color and plot the corresponding arrows
+    for c = 1:n_colors
+        idx = (bins == c); % Find all points that fall into this color bin
+        if any(idx(:))
+            quiver3(X_plot(idx), Y_plot(idx), Z_plot(idx), ...
+                    U_3d(idx), V_3d(idx), W_3d(idx), 1, ...
+                    'Color', cmap(c,:), 'LineWidth', 1, 'HandleVisibility', 'off');
+        end
+    end
+    
+    % Add Colorbar to show what the colors mean
+    % cb = colorbar;
+    % ylabel(cb, 'Altitude ($y$)', 'Interpreter', 'latex', 'FontSize', 14);
+    % clim([c_min c_max]); % Ensure colorbar limits match data
+    
+    %----------------------------------------------------------------------
+    
+    % B. Plot the Actual Solution Trajectory
+    traj_X = vel(:,2) .* cos(vel(:,1));
+    traj_Y = vel(:,2) .* sin(vel(:,1));
+    traj_Z = vel(:,3);
+    
+    plot3(traj_X, traj_Y, traj_Z, 'Color', 'r', 'LineWidth', 3, ...
+          'DisplayName', 'Actual Trajectory');
+    plot3(traj_X(end), traj_Y(end), traj_Z(end), 'p', ... % 'p' is for pentagram (star)
+          'MarkerSize', 20, ...
+          'MarkerFaceColor', 'y', ...   % Yellow fill
+          'MarkerEdgeColor', 'k', ...   % Black outline
+          'LineWidth', 1.5, ...
+          'DisplayName', 'Equilibrium Point');
+    % Labels
+    title(['Phase Cylinder Dynamics ($D=' num2str(D) '$)'], 'Interpreter', 'latex', 'FontSize', 24);
+    subtitle('$\theta_0=0$, $s_0=1.5$, $y_0=0$', 'Interpreter', 'latex', 'FontSize', 18);
+    set(gca, 'XTick', [], 'YTick', [], ...
+        'XColor', 'None', 'YColor', 'None', 'ZColor', 'k');
+    set(gca, 'YLim', [Y_min-1.5, Y_max+1.5]);
+    
+    theta = linspace(0, 2*pi, 100);
+    s_grid_vals = [0.5, 1.0, 1.5, 2.0]; % Define which radii you want to see
+    
+    for sg = s_grid_vals
+        % Create circle coordinates
+        xg = sg * cos(theta);
+        yg = sg * sin(theta);
+        
+        % Plot the ring on the "floor" (Y_min)
+        plot3(xg, yg, Y_min * ones(size(theta)), ...
+              'Color', 'k', 'LineStyle', ':', 'LineWidth', 1, 'HandleVisibility', 'off');
+              
+        % Add a small text label for the value
+        text(sg, 0.2, Y_min, ['$s=' num2str(sg) '$'], ...
+             'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', ...
+             'FontSize', 12, 'Interpreter', 'latex', 'Color', 'k');
+    end
+    % Plotting Rings and Text (Your existing code)
+    x = S_max * cos(theta);
+    y = S_max * sin(theta);
+    angles = 0:pi/4:2*pi-0.1;
+    labels = {'$0$', '$\pi/4$', '$\pi/2$', '$3\pi/4$', '$\pi$', '$-\pi/4$', '$-\pi/2$', '$-3\pi/4$'};
+    
+    for k = 1:length(angles)
+        % Spokes
+        plot3([0, (S_max+0.1)*cos(angles(k))], [0, (S_max+0.1)*sin(angles(k))], [0,0], ...
+              'Color', 'k', 'LineStyle', '-','HandleVisibility','off', 'LineWidth', 1);
+        % Vertical Lines
+        plot3([(S_max)*cos(angles(k)), (S_max)*cos(angles(k))], [(S_max)*sin(angles(k)), (S_max)*sin(angles(k))], [Y_min,Y_max], ...
+              'Color', 'k', 'LineStyle', '-','HandleVisibility','off', 'LineWidth', 1);
+        % Labels
+        text((S_max+0.3)*cos(angles(k)), (S_max+0.3)*sin(angles(k)), 0, labels{k}, ...
+             'HorizontalAlignment', 'center', 'FontSize', 15, 'Interpreter','latex', 'Color', 'k');
+    end
+    
+    % Main Rings
+    plot3(x, y, zeros(size(theta)), 'Color', 'k', 'LineStyle', '-', 'HandleVisibility', 'off', 'LineWidth', 1);
+    plot3(x, y, Y_min .* ones(size(theta)), 'Color', 'k', 'LineStyle', '-', 'HandleVisibility', 'off', 'LineWidth', 1);
+    plot3(x, y, Y_max.*ones(size(theta)), 'Color', 'k', 'LineStyle', '-', 'HandleVisibility', 'off', 'LineWidth', 1);
+    text(0, (S_max+1), 0, '$\theta$', 'HorizontalAlignment', 'center', ...
+            'FontSize', 40, 'Interpreter','latex', 'Color', 'k');
+    text(-S_max/2, 0, 0.1, '$s$', 'HorizontalAlignment', 'center', ...
+        'FontSize', 40, 'Interpreter', 'latex', 'Color', 'k', 'Rotation', 0);
+
+    set(gcf, 'Color', 'w');
+end
+
+% Supersonic Flight Simulation
+
+%----- Modelling Supersonic Flight & Jacobian Stability Analysis -----
+close all; clc; clear all;
+
+%----- Parameters -----
+% Supersonic Transition Parameters
+s_v = 3.0;          % Speed of sound (Mach 1)
+D_sub = 1.0;        % Drag coefficient (Subsonic)
+D_super = 2.0;      % Drag coefficient (Supersonic)
+k_drag = 5.0;       % Steepness of drag rise
+
+% Standard Parameters
+H = 3.0;          
+k_thrust = 1.5;          
+T_base = 25.0;       
+dt = 1e-4;          
+tspan = 0:dt:10;    
+
+% Control Parameter
+pitch_attitude = 0.03; % Constant nose pitch (radians)
+
+%----- Dynamics Function -----
+dynamics = @(t, v) plane_dynamics(v, s_v, D_sub, D_super, k_drag, T_base, H, k_thrust, pitch_attitude);
+
+%----- Initial Conditions & Solve -----
+v0 = [0; 1.5; 0]; % Start Subsonic
+opts = odeset('RelTol', 1e-6, 'AbsTol', 1e-6);
+[t, vel] = ode45(dynamics, tspan, v0, opts);
+
+%----- 1. EXTRACT VARIABLES -----
+theta = vel(:,1);
+s = vel(:,2);
+y = vel(:,3);
+Mach = s ./ s_v; 
+alpha_vals = pitch_attitude - theta; 
+D_vals = D_sub + (D_super - D_sub) ./ (1 + exp(-k_drag .* (s - s_v)));
+
+%----- 2. STABILITY ANALYSIS (CALCULATE JACOBIAN) -----
+% We will loop through every time step and calculate the eigenvalues
+eigen_real_part = zeros(length(t), 1);
+stability_status = zeros(length(t), 1); % 1=Stable, 0=Unstable
+
+for i = 1:length(t)
+    % Current State
+    th_i = theta(i);
+    s_i = s(i);
+    y_i = y(i);
+    
+    % Helper terms for Jacobian
+    E = exp(-y_i/H);
+    alpha = pitch_attitude - th_i;
+    
+    % Drag Derivatives
+    % Sigmoid function S(x) derivative is S(x) * (1 - S(x))
+    term_sig = 1 / (1 + exp(-k_drag * (s_i - s_v)));
+    D_prime = (D_super - D_sub) * k_drag * term_sig * (1 - term_sig);
+    D_curr = D_sub + (D_super - D_sub) * term_sig;
+    
+    % --- CONSTRUCT JACOBIAN MATRIX (J) ---
+    if s_i > s_v
+        % SUPERSONIC JACOBIAN (Using your provided formula)
+        M = s_i / s_v;
+        A = sqrt(M^2 - 1);
+        if A < 0.1, A = 0.1; end % Avoid singularity at Mach 1
+        
+        % Row 1: Theta Dot derivatives
+        % J11: d(theta_dot)/d(theta) -> Stability term
+        J11 = -4 * s_i * E / A + sin(th_i)/s_i;
+        
+        % J12: d(theta_dot)/d(s) -> Speed coupling
+        % Note: Derivative of 1/sqrt(M^2-1) is complex, using your approximation
+        J12 = -4 * alpha * E / (A^3) + cos(th_i)/(s_i^2); 
+        
+        % J13: d(theta_dot)/d(y) -> Altitude coupling
+        J13 = -(1/H) * (4 * alpha * s_i * E / A);
+        
+        % Row 2: Speed Dot derivatives
+        J21 = -cos(th_i);
+        J22 = -(2*s_i*D_curr + s_i^2*D_prime) * E;
+        J23 = (1/H) * (D_curr * s_i^2 * E - k_thrust * T_base * exp(-k_thrust*y_i/H));
+        
+        % Row 3: Altitude Dot derivatives
+        J31 = s_i * cos(th_i);
+        J32 = sin(th_i);
+        J33 = 0;
+        
+        J = [J11, J12, J13; J21, J22, J23; J31, J32, J33];
+        
+        % Calculate Eigenvalues
+        e = eig(J);
+        
+        % Find the "Most Positive" Real part (Leading Eigenvalue)
+        % If this is negative, ALL are negative -> STABLE.
+        eigen_real_part(i) = max(real(e));
+        
+    else
+        % SUBSONIC (Placeholder for plot continuity)
+        eigen_real_part(i) = NaN; 
+    end
+end
+
+%----- 3. PLOT RESULTS -----
+figure('Name', 'Supersonic Flight & Stability', 'Color', 'w', 'Position', [50 50 1400 700], 'Theme', 'light');
+
+% Plot 1: Speed
+subplot(2,2,1); hold on; grid on;
+plot(t, s, 'LineWidth', 2);
+plot(t, Mach, 'LineWidth', 2, 'LineStyle', '--');
+yline(s_v, 'r--', 'Mach 1');
+ylabel('Speed / Mach', 'Interpreter', 'latex'); title('1. Breaking Sound Barrier', 'Interpreter', 'latex');
+legend('Speed', 'Mach', 'Location', 'NorthWest', 'Interpreter', 'latex'); set(gca,'FontSize',12);
+
+% Plot 2: Angles (Alpha vs Theta)
+subplot(2,2,2); hold on; grid on;
+plot(t, theta, 'b', 'LineWidth', 2);
+plot(t, alpha_vals, 'm', 'LineWidth', 2);
+yline(pitch_attitude, 'k:', 'Pilot Input', 'Interpreter', 'latex');
+ylabel('Angle (rad)', 'Interpreter', 'latex'); title('2. Flight Path Stability', 'Interpreter', 'latex');
+legend('\theta (Flight Path)', '\alpha (Angle of Attack)', 'Location', 'Best', 'Interpreter', 'latex'); set(gca,'FontSize',12);
+
+% Plot 3: Altitude
+subplot(2,2,3); hold on; grid on;
+plot(t, y, 'k', 'LineWidth', 2);
+xlabel('Time (s)', 'Interpreter', 'latex'); ylabel('Altitude', 'Interpreter', 'latex'); title('3. Trajectory', 'Interpreter', 'latex');
+set(gca,'FontSize',12);
+
+% Plot 4: STABILITY ANALYSIS (Eigenvalues)
+subplot(2,2,4); hold on; grid on;
+% Draw stability boundary
+yline(0, 'k-', 'LineWidth', 2); 
+fill([t(1) t(end) t(end) t(1)], [0 0 -10 -10], 'g', 'FaceAlpha', 0.1, 'EdgeColor', 'none');
+fill([t(1) t(end) t(end) t(1)], [0 0 10 10], 'r', 'FaceAlpha', 0.1, 'EdgeColor', 'none');
+
+plot(t, eigen_real_part, 'b-', 'LineWidth', 2);
+text(1, 2, 'UNSTABLE (Re > 0)', 'Color', 'r', 'FontWeight', 'bold', 'Interpreter', 'latex');
+text(1, -2, 'STABLE (Re < 0)', 'Color', 'g', 'FontWeight', 'bold', 'Interpreter', 'latex');
+
+ylim([-5 5]); xlim([0 10]);
+xlabel('Time (s)', 'Interpreter', 'latex'); ylabel('Max Real Eigenvalue', 'Interpreter', 'latex'); 
+title('4. Lyapunov Stability Analysis ($\operatorname{Re(\lambda)$)', 'Interpreter', 'latex');
+ylim([-0.1 0.1])
+set(gca,'FontSize',12);
+
+
+%==========================================================================
+%   LOCAL FUNCTION FOR DYNAMICS
+%==========================================================================
+function dv = plane_dynamics(v, s_v, D_sub, D_super, k_drag, T_base, H, k_thrust, pitch_attitude)
+    theta = v(1);
+    s = v(2);
+    y = v(3);
+    
+    D_current = D_sub + (D_super - D_sub) / (1 + exp(-k_drag * (s - s_v)));
+    Thrust = T_base * exp(-k_thrust * y / H);
+    
+    if s <= s_v
+        d_theta = (s^2 * exp(-y/H) - cos(theta)) / s;
+    else
+        M = s / s_v;
+        term = sqrt(M^2 - 1);
+        if term < 0.1, term = 0.1; end 
+        
+        alpha = pitch_attitude - theta;
+        d_theta = (4 * alpha / term) * s * exp(-y/H) - (cos(theta) / s);
+    end
+    
+    d_s = -sin(theta) - D_current * s^2 * exp(-y/H) + Thrust;
+    d_y = s * sin(theta);
+    
+    dv = [d_theta; d_s; d_y];
+end

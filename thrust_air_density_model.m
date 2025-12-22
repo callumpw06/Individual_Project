@@ -253,7 +253,7 @@ dt = 1e-4;
 tspan = 0:dt:10;    
 
 % Control Parameter
-pitch_attitude = 0.03; % Constant nose pitch (radians)
+pitch_attitude = 0.012; % Constant nose pitch (radians)
 
 %----- Dynamics Function -----
 dynamics = @(t, v) plane_dynamics(v, s_v, D_sub, D_super, k_drag, T_base, H, k_thrust, pitch_attitude);
@@ -379,6 +379,7 @@ function dv = plane_dynamics(v, s_v, D_sub, D_super, k_drag, T_base, H, k_thrust
     
     if s <= s_v
         d_theta = (s^2 * exp(-y/H) - cos(theta)) / s;
+        d_s = -sin(theta) - D_sub * s^2 * exp(-y/H) + Thrust;
     else
         M = s / s_v;
         term = sqrt(M^2 - 1);
@@ -386,9 +387,9 @@ function dv = plane_dynamics(v, s_v, D_sub, D_super, k_drag, T_base, H, k_thrust
         
         alpha = pitch_attitude - theta;
         d_theta = (4 * alpha / term) * s * exp(-y/H) - (cos(theta) / s);
+        d_s = -sin(theta) - D_current * s^2 * exp(-y/H) + Thrust;
     end
     
-    d_s = -sin(theta) - D_current * s^2 * exp(-y/H) + Thrust;
     d_y = s * sin(theta);
     
     dv = [d_theta; d_s; d_y];
